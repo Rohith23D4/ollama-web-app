@@ -14,7 +14,7 @@ app.post('/api/chat', (req, res) => {
     const { prompt } = req.body;
 
     const postData = JSON.stringify({
-        model: "mixtral-8x7b-32768",
+        model: "llama-3.1-8b-instant",
         messages: [{ role: "user", content: prompt }]
     });
 
