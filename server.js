@@ -14,7 +14,7 @@ app.post('/api/chat', (req, res) => {
     const { prompt } = req.body;
 
     const postData = JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [{ role: "user", content: prompt }]
     });
 
@@ -45,18 +45,18 @@ app.post('/api/chat', (req, res) => {
                     res.send(text);
                 } else {
                     console.error("Groq Error Response:", body);
-                    res.status(response.statusCode || 500).json({ error: parsed.error?.message || "Groq API error." });
+                    res.status(response.statusCode || 500).send(parsed.error?.message || "Groq API error.");
                 }
             } catch (e) {
                 console.error("JSON Parse Error:", e, body);
-                res.status(500).json({ error: "Invalid response from AI provider." });
+                res.status(500).send("Invalid response from AI provider.");
             }
         });
     });
 
     request.on('error', (error) => {
         console.error("HTTPS Request Error:", error);
-        res.status(500).json({ error: "Failed to connect to Groq API." });
+        res.status(500).send("Failed to connect to Groq API.");
     });
 
     request.write(postData);
