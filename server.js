@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const https = require('https');
 
 const app = express();
 app.use(cors());
@@ -9,57 +10,57 @@ app.use(express.static(__dirname));
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "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";
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', (req, res) => {
     const { prompt } = req.body;
 
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [{ role: "user", content: prompt }],
-                stream: true
-            })
+    const postData = JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }]
+    });
+
+    const options = {
+        hostname: 'api.groq.com',
+        path: '/openai/v1/chat/completions',
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+
+    const request = https.request(options, (response) => {
+        let body = '';
+
+        response.on('data', (chunk) => {
+            body += chunk;
         });
 
-        if (!response.ok) {
-            throw new Error(`Groq API returned status ${response.status}`);
-        }
-
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n').filter(line => line.trim() !== '');
-
-            for (const line of lines) {
-                if (line.includes('[DONE]')) continue;
-                if (line.startsWith('data: ')) {
-                    try {
-                        const parsed = JSON.parse(line.replace('data: ', ''));
-                        const text = parsed.choices[0]?.delta?.content || '';
-                        if (text) res.write(text);
-                    } catch (e) {
-                        // ignore chunk parse errors
-                    }
+        response.on('end', () => {
+            try {
+                const parsed = JSON.parse(body);
+                if (response.statusCode === 200 && parsed.choices && parsed.choices[0]) {
+                    const text = parsed.choices[0].message.content;
+                    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+                    res.send(text);
+                } else {
+                    console.error("Groq Error Response:", body);
+                    res.status(response.statusCode || 500).json({ error: parsed.error?.message || "Groq API error." });
                 }
+            } catch (e) {
+                console.error("JSON Parse Error:", e, body);
+                res.status(500).json({ error: "Invalid response from AI provider." });
             }
-        }
-        res.end();
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Failed to fetch response from AI model." });
-    }
+        });
+    });
+
+    request.on('error', (error) => {
+        console.error("HTTPS Request Error:", error);
+        res.status(500).json({ error: "Failed to connect to Groq API." });
+    });
+
+    request.write(postData);
+    request.end();
 });
 
 app.get('*', (req, res) => {
